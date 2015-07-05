@@ -1,41 +1,79 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <string.h>
 #include <unistd.h>
 #include <yajl/yajl_tree.h> 
+#include <errno.h>
 
+struct config_data{
+    char *message;
+};
 const char *port = "8080";
-const char *msg = "daw";
+const char *msg = "daw\n";
 const int backlog = 10;
 const char *config_path = "./config.json";
 
-int readConfig()
+
+
+/* 
+ * Gets the config file, which must be in valid JSON, from the path in *config_path.
+ * Gets the file size and allocates a buffer
+ * Reads the config in the buffer
+ * Parses the JSON and returns a struct with the config
+ *
+ */
+int readConfig(struct config_data *cfg_data)
 {
-    int return_status;
+    int return_status, size = 0;
     size_t rd;
     yajl_val node;
     char errbuf[1024];
-    char configData[65536];
+    char *configBuffer;
     FILE *fd;
+    struct stat st;
+
     fd = fopen(config_path, "r");
+    if (!fd) {
+        perror("Failed to open the file");
+    }
 
-    rd = fread((void *) configData, 1, sizeof(configData)-1, fd);
-    //TODO error checking
+    int filedes = fileno(fd);
+
+    fstat(filedes, &st);
     
-    node = yajl_tree_parse((const char *) configData, errbuf, sizeof(errbuf));
-    //TODO error checking
+    size = st.st_size;
 
-    const char *path[] = {"message"};
+    configBuffer = malloc(size*sizeof(char));
+    if (!configBuffer) {
+        perror("Failed to allocate configBuffer Buffer");
+    }
+
+    rd = fread(configBuffer, sizeof(char), st.st_size-1, fd);
+    if (!rd) {
+        perror("Failed to read");
+    }
+    
+    node = yajl_tree_parse((const char *) configBuffer, errbuf, sizeof(errbuf));
+    if (!node){
+        perror("Failed to parse");
+    }
+
+    const char *path[] = {"message", (char *)0};
     yajl_val v = yajl_tree_get(node, path, yajl_t_string);
-    //TODO error checking
+    if (!v) {
+        perror("Failed to get the message");
+    }
 
-    fprintf(stderr, "%s\n", YAJL_GET_STRING(v));
-
-    yajl_tree_free(node);
+    cfg_data->message = YAJL_GET_STRING(v);
+    /*yajl_tree_free(node);*/
+    fprintf(stderr, "Inside readConfig: %s\n", cfg_data->message);
+    
+    free(configBuffer);
     return return_status;
 }
 
@@ -77,11 +115,16 @@ int main()
     int s, sockfd, new_fd;
     int i = 0;
     struct sockaddr their_addr;
+    struct config_data *cfg_data;
     socklen_t addr_size;
     
+    memset(cfg_data, 0, sizeof(*cfg_data));
+
     s = setup(&sockfd);
     //TODO error checking
-    s = readConfig();
+
+    s = readConfig(cfg_data);
+    fprintf(stderr, "Inside main: %s\n", cfg_data->message);
 
     while (1) {
         //Accepts the connection, returning a new socket and changing the sockaddr
