@@ -69,10 +69,9 @@ int readConfig(struct config_data *cfg_data)
         perror("Failed to get the message");
     }
 
-    cfg_data->message = YAJL_GET_STRING(v);
-    /*yajl_tree_free(node);*/
-    fprintf(stderr, "Inside readConfig: %s\n", cfg_data->message);
-    
+    cfg_data->message = strdup(YAJL_GET_STRING(v));
+
+    yajl_tree_free(node);
     free(configBuffer);
     return return_status;
 }
